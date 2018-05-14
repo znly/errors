@@ -145,6 +145,9 @@ func WithStack(err error) error {
 	if err == nil {
 		return nil
 	}
+	if stackAlreadyPresent(err) {
+		return err
+	}
 	return &withStack{
 		err,
 		callers(),
@@ -185,6 +188,9 @@ func Wrap(err error, message string) error {
 		cause: err,
 		msg:   message,
 	}
+	if stackAlreadyPresent(err) {
+		return err
+	}
 	return &withStack{
 		err,
 		callers(),
@@ -201,6 +207,9 @@ func Wrapf(err error, format string, args ...interface{}) error {
 	err = &withMessage{
 		cause: err,
 		msg:   fmt.Sprintf(format, args...),
+	}
+	if stackAlreadyPresent(err) {
+		return err
 	}
 	return &withStack{
 		err,
@@ -242,6 +251,10 @@ func (w *withMessage) Format(s fmt.State, verb rune) {
 	}
 }
 
+type causer interface {
+	Cause() error
+}
+
 // Cause returns the underlying cause of the error, if possible.
 // An error value has a cause if it implements the following
 // interface:
@@ -254,9 +267,6 @@ func (w *withMessage) Format(s fmt.State, verb rune) {
 // be returned. If the error is nil, nil will be returned without further
 // investigation.
 func Cause(err error) error {
-	type causer interface {
-		Cause() error
-	}
 
 	for err != nil {
 		cause, ok := err.(causer)
@@ -266,4 +276,25 @@ func Cause(err error) error {
 		err = cause.Cause()
 	}
 	return err
+}
+
+// -----------------------------------------------------------------------------
+
+type stackTracer interface {
+	StackTrace() StackTrace
+}
+
+func stackAlreadyPresent(err error) bool {
+	for err != nil {
+		_, ok := err.(stackTracer)
+		if ok {
+			return true
+		}
+		cause, ok := err.(causer)
+		if !ok {
+			break
+		}
+		err = cause.Cause()
+	}
+	return false
 }
