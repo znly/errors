@@ -37,6 +37,14 @@ func (f Frame) line() int {
 	return line
 }
 
+func (f Frame) entry() uintptr {
+	fn := runtime.FuncForPC(f.pc())
+	if fn == nil {
+		return 0
+	}
+	return fn.Entry()
+}
+
 // Format formats the frame according to the fmt.Formatter interface.
 //
 //    %s    source file
@@ -46,9 +54,10 @@ func (f Frame) line() int {
 //
 // Format accepts flags that alter the printing of some verbs, as follows:
 //
+//    %+d   display the source line with the entry
 //    %+s   function name and path of source file relative to the compile time
 //          GOPATH separated by \n\t (<funcname>\n\t<path>)
-//    %+v   equivalent to %+s:%d
+//    %+v   equivalent to %+s:%+d
 func (f Frame) Format(s fmt.State, verb rune) {
 	switch verb {
 	case 's':
@@ -60,13 +69,18 @@ func (f Frame) Format(s fmt.State, verb rune) {
 				io.WriteString(s, "unknown")
 			} else {
 				file, _ := fn.FileLine(pc)
-				fmt.Fprintf(s, "%s\n\t%s", fn.Name(), file)
+				fmt.Fprintf(s, "%s(0x0, 0x0)\n\t%s", fn.Name(), file)
 			}
 		default:
 			io.WriteString(s, path.Base(f.file()))
 		}
 	case 'd':
-		fmt.Fprintf(s, "%d", f.line())
+		switch {
+		case s.Flag('+'):
+			fmt.Fprintf(s, "%d +%#x", f.line(), f.pc()+1-f.entry())
+		default:
+			fmt.Fprintf(s, "%d", f.line())
+		}
 	case 'n':
 		name := runtime.FuncForPC(f.pc()).Name()
 		io.WriteString(s, funcname(name))
